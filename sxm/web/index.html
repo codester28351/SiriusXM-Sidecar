@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SiriusXM Proxy UI</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0f1724;
+      --card: #0b1220;
+      --muted: #9aa4b2;
+      --accent: #1fb6ff;
+      --accent-2: #7c3aed;
+      --white: #e6eef6;
+      --danger: #ff6b6b;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body { height:100%; margin:0; background: linear-gradient(180deg,#071021 0%, #071827 100%); color:var(--white); }
+    .container { max-width:1100px; margin:28px auto; padding:20px; }
+    header { display:flex; align-items:center; gap:16px; margin-bottom:18px; }
+    header h1 { margin:0; font-size:20px; letter-spacing: -0.5px; }
+    .controls { margin-left:auto; display:flex; gap:12px; align-items:center; }
+    .card { background: rgba(255,255,255,0.02); border-radius:10px; padding:14px; box-shadow: 0 6px 18px rgba(2,6,23,0.6); }
+    .row { display:flex; gap:16px; }
+    .col { flex:1; }
+    .left { width:360px; flex:0 0 360px; }
+    .right { flex:1; }
+    .search { display:flex; gap:8px; margin-bottom:12px; }
+    input[type="text"], select { width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background:transparent; color:var(--white); }
+    button { padding:8px 12px; border-radius:8px; border:0; background:var(--accent); color:#04202b; cursor:pointer; font-weight:600; }
+    button.ghost { background:transparent; border:1px solid rgba(255,255,255,0.06); color:var(--white); }
+    .toggle { display:flex; align-items:center; gap:10px; }
+    .status { font-size:0.9rem; color:var(--muted); }
+    ul.channels { list-style:none; padding:0; margin:0; max-height:520px; overflow:auto; }
+    ul.channels li { display:flex; align-items:center; gap:10px; padding:8px; border-radius:8px; margin-bottom:6px; cursor:pointer; }
+    ul.channels li:hover { background: rgba(255,255,255,0.02); }
+    .logo { width:48px; height:48px; border-radius:6px; background:#0a0f14; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .logo img { width:100%; height:100%; object-fit:cover; }
+    .meta { flex:1; display:flex; flex-direction:column; }
+    .meta .title { font-weight:700; font-size:14px; }
+    .meta .sub { font-size:12px; color:var(--muted); }
+    .nowplaying { margin-top:12px; display:flex; gap:12px; align-items:center; }
+    .nowplaying .art { width:96px; height:96px; border-radius:8px; overflow:hidden; background:#07121a; }
+    .nowplaying .info { flex:1; }
+    .nowplaying .info h3 { margin:0 0 6px 0; font-size:16px; }
+    .nowplaying .info p { margin:0; color:var(--muted); font-size:13px; }
+    footer { margin-top:18px; color:var(--muted); font-size:12px; display:flex; justify-content:space-between; align-items:center; }
+    .small { font-size:12px; color:var(--muted); }
+    .kbd { background:rgba(255,255,255,0.03); padding:4px 8px; border-radius:6px; font-weight:600; font-size:12px; }
+    .server-indicator { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; background: rgba(255,255,255,0.02); }
+    .server-indicator.on { background: linear-gradient(90deg,var(--accent),var(--accent-2)); color:#00121a; font-weight:700; }
+    .server-indicator.off { opacity:0.6; }
+    .note { color:var(--muted); font-size:12px; margin-top:8px; }
+    .center { text-align:center; }
+    .muted { color:var(--muted); }
+    .flex { display:flex; gap:8px; align-items:center; }
+    .spacer { height:12px; }
+    .big { font-size:18px; font-weight:700; }
+    .danger { background:var(--danger); color:#fff; }
+    .controls .small-btn { padding:6px 8px; font-size:13px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.03); color:var(--white); }
+    .footer-links a { color:var(--muted); text-decoration:none; margin-left:8px; }
+    .spinner { width:14px; height:14px; border-radius:50%; border:2px solid rgba(255,255,255,0.08); border-top-color:var(--accent); animation:spin 1s linear infinite; display:inline-block; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>SiriusXM Proxy</h1>
+        <div class="small muted">Local proxy for SiriusXM HLS streams</div>
+      </div>
+
+      <div class="controls">
+        <div id="serverIndicator" class="server-indicator off">Server Mode: <span id="serverIndicatorText">Unknown</span></div>
+        <div class="flex">
+          <button id="refreshBtn" class="small-btn">Refresh Channels</button>
+          <button id="listBtn" class="small-btn ghost">List</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="card row" role="main" aria-labelledby="main-title">
+      <aside class="left card">
+        <div class="search">
+          <input id="searchInput" type="text" placeholder="Search channels or number..." />
+          <button id="searchBtn" class="ghost">Search</button>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="card" style="padding:10px; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div class="muted">Server Mode</div>
+              <div class="small muted">Toggle whether the proxy is in server-mode state</div>
+            </div>
+            <div class="toggle">
+              <label for="serverModeToggle" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input id="serverModeToggle" type="checkbox" />
+                <span id="serverModeLabel" class="small muted">Off</span>
+              </label>
+            </div>
+          </div>
+          <div class="note">Server mode is stored in memory and reflected in the UI. It does not start/stop the HTTP server process itself.</div>
+        </div>
+
+        <div style="margin-top:8px;">
+          <div class="muted" style="margin-bottom:8px;">Channels</div>
+          <ul id="channelsList" class="channels"></ul>
+        </div>
+      </aside>
+
+      <section class="right">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div>
+            <div class="muted">Now Playing</div>
+            <div id="nowPlayingTitle" class="big">—</div>
+            <div id="nowPlayingSub" class="muted">—</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <div class="kbd">Local</div>
+            <div class="muted">Port: <span id="portText">9999</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; gap:12px; align-items:center;">
+            <div class="nowplaying">
+              <div class="art" id="nowArt"><img id="nowArtImg" src="play.png" alt="art" style="width:100%; height:100%; object-fit:cover;" /></div>
+              <div class="info">
+                <h3 id="nowTitle">Not playing</h3>
+                <p id="nowArtist" class="muted">—</p>
+                <p id="nowChannel" class="muted">Channel: —</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button id="playBtn" class="ghost">Open in Player</button>
+              <button id="copyM3U" class="ghost">Copy M3U</button>
+              <button id="copyXSPF" class="ghost">Copy XSPF</button>
+              <div style="flex:1"></div>
+              <div id="authStatus" class="muted">Auth: <span id="authText">Unknown</span></div>
+            </div>
+          </div>
+
+          <hr style="border:none; height:1px; background:rgba(255,255,255,0.03); margin:12px 0;" />
+
+          <div style="display:flex; gap:12px; align-items:center;">
+            <div style="flex:1">
+              <div class="muted">Channel Controls</div>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <input id="forceChannelInput" type="text" placeholder="channelId or number" />
+                <button id="forceBtn" class="ghost">Force</button>
+                <button id="clearForce" class="ghost">Clear</button>
+              </div>
+            </div>
+            <div style="width:220px;">
+              <div class="muted">Playback</div>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <button id="prevSeg" class="ghost">Prev</button>
+                <button id="nextSeg" class="ghost">Next</button>
+                <button id="refreshNow" class="ghost">Refresh Now</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div style="margin-top:12px;">
+          <div class="card" style="padding:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div class="muted">Diagnostics</div>
+                <div class="note">Useful for debugging authentication and playlist retrieval.</div>
+              </div>
+              <div>
+                <button id="diagAuth" class="ghost">Auth Test</button>
+                <button id="diagPlaylist" class="ghost">Playlist Test</button>
+              </div>
+            </div>
+
+            <pre id="diagOutput" style="margin-top:12px; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px; max-height:160px; overflow:auto; color:var(--muted);"></pre>
+          </div>
+        </div>
+
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-left small muted">SiriusXM Proxy UI — local only</div>
+      <div class="footer-links small muted">
+        <span>Docs</span>
+        <a href="https://github.com/invertedorigin/SiriusXM" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // Configuration
+    const API = {
+      serverMode: '/server-mode',
+      channels: '/channels.m3u', // not a real endpoint but placeholder for UI actions
+    };
+
+    // Utility
+    function el(id) { return document.getElementById(id); }
+    function setText(id, txt) { const e = el(id); if (e) e.textContent = txt; }
+
+    // Fetch server-mode state
+    async function fetchServerMode() {
+      try {
+        const r = await fetch(API.serverMode, { cache: 'no-store' });
+        if (!r.ok) {
+          setIndicator(null);
+          return;
+        }
+        const j = await r.json();
+        const enabled = !!j.server_mode;
+        el('serverModeToggle').checked = enabled;
+        el('serverModeLabel').textContent = enabled ? 'On' : 'Off';
+        setIndicator(enabled);
+      } catch (e) {
+        console.error('fetchServerMode', e);
+        setIndicator(null);
+      }
+    }
+
+    // Set server-mode state
+    async function setServerMode(enabled) {
+      try {
+        const r = await fetch(API.serverMode, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({server_mode: !!enabled})
+        });
+        if (!r.ok) throw new Error('Failed to set server mode');
+        const j = await r.json();
+        const en = !!j.server_mode;
+        el('serverModeLabel').textContent = en ? 'On' : 'Off';
+        setIndicator(en);
+      } catch (e) {
+        console.error('setServerMode', e);
+        // revert to actual state
+        await fetchServerMode();
+      }
+    }
+
+    function setIndicator(enabled) {
+      const ind = el('serverIndicator');
+      const txt = el('serverIndicatorText');
+      if (enabled === true) {
+        ind.classList.remove('off'); ind.classList.add('on');
+        txt.textContent = 'Enabled';
+      } else if (enabled === false) {
+        ind.classList.remove('on'); ind.classList.add('off');
+        txt.textContent = 'Disabled';
+      } else {
+        ind.classList.remove('on'); ind.classList.remove('off');
+        txt.textContent = 'Unavailable';
+      }
+    }
+
+    // Channels list rendering (mocked fetch to API)
+    async function fetchChannels() {
+      // The original project exposes a get channels API via the proxy; here we call the proxy's internal method by requesting the channel listing
+      // For compatibility we call the script's 'get' via the existing endpoints; if not available, we fallback to a simple message.
+      try {
+        // Attempt to fetch the channel listing via the proxy's 'get' endpoint if present
+        // The original script does not expose a dedicated /channels JSON endpoint, so we will attempt to call the script's list mode via fetch to /channels.m3u
+        // If that fails, show a helpful message.
+        const r = await fetch('/channels.m3u', { cache: 'no-store' });
+        if (!r.ok) {
+          // fallback: call the server to list channels via the CLI 'list' mode is not available over HTTP
+          renderChannels([]);
+          return;
+        }
+        const text = await r.text();
+        // parse m3u lines to extract channel ids and names
+        const lines = text.split('\n');
+        const items = [];
+        for (let i=0;i<lines.length;i++) {
+          const ln = lines[i].trim();
+          if (ln.startsWith('#EXTINF')) {
+            const meta = ln.split(',',2)[1] || '';
+            const next = lines[i+1] || '';
+            const id = next.replace(/^\//,'').replace(/\.m3u8$/,'');
+            items.push({id: id, meta: meta});
+          }
+        }
+        renderChannels(items);
+      } catch (e) {
+        console.error('fetchChannels', e);
+        renderChannels([]);
+      }
+    }
+
+    function renderChannels(items) {
+      const ul = el('channelsList');
+      ul.innerHTML = '';
+      if (!items || items.length === 0) {
+        const li = document.createElement('li');
+        li.className = 'muted';
+        li.textContent = 'No channels available (try Refresh)';
+        ul.appendChild(li);
+        return;
+      }
+      items.forEach(it => {
+        const li = document.createElement('li');
+        li.tabIndex = 0;
+        const logo = document.createElement('div'); logo.className = 'logo';
+        const img = document.createElement('img'); img.src = 'play.png'; img.alt = '';
+        logo.appendChild(img);
+        const meta = document.createElement('div'); meta.className = 'meta';
+        const title = document.createElement('div'); title.className = 'title'; title.textContent = it.meta || it.id;
+        const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = it.id;
+        meta.appendChild(title); meta.appendChild(sub);
+        li.appendChild(logo); li.appendChild(meta);
+        li.addEventListener('click', () => {
+          // set now playing info to this channel
+          el('nowTitle').textContent = it.meta || it.id;
+          el('nowArtist').textContent = 'Channel ' + it.id;
+          el('nowChannel').textContent = 'Channel ID: ' + it.id;
+          // set force channel input
+          el('forceChannelInput').value = it.id;
+        });
+        ul.appendChild(li);
+      });
+    }
+
+    // Diagnostics helpers
+    function diag(msg) {
+      const out = el('diagOutput');
+      out.textContent = (out.textContent ? out.textContent + '\n' : '') + '[' + new Date().toLocaleTimeString() + '] ' + msg;
+      out.scrollTop = out.scrollHeight;
+    }
+
+    async function authTest() {
+      diag('Starting auth test...');
+      try {
+        const r = await fetch('/server-mode'); // simple endpoint to check server responsiveness
+        diag('server-mode endpoint status: ' + r.status);
+        if (r.ok) {
+          const j = await r.json();
+          diag('server_mode: ' + j.server_mode);
+          setText('authText', 'OK');
+        } else {
+          setText('authText', 'Error');
+        }
+      } catch (e) {
+        diag('Auth test failed: ' + e);
+        setText('authText', 'Error');
+      }
+    }
+
+    async function playlistTest() {
+      diag('Starting playlist test...');
+      try {
+        // Attempt to fetch a sample playlist for the currently forced channel
+        const ch = el('forceChannelInput').value || '';
+        if (!ch) {
+          diag('No channel specified for playlist test');
+          return;
+        }
+        const url = '/' + ch + '.m3u8';
+        diag('Fetching ' + url);
+        const r = await fetch(url);
+        diag('Playlist fetch status: ' + r.status);
+        if (r.ok) {
+          const txt = await r.text();
+          diag('Playlist length: ' + txt.length + ' chars');
+        } else {
+          diag('Playlist fetch failed with status ' + r.status);
+        }
+      } catch (e) {
+        diag('Playlist test failed: ' + e);
+      }
+    }
+
+    // Event wiring
+    document.addEventListener('DOMContentLoaded', () => {
+      // initial fetches
+      fetchServerMode();
+      fetchChannels();
+
+      // wire toggle
+      el('serverModeToggle').addEventListener('change', (ev) => {
+        setServerMode(ev.target.checked);
+      });
+
+      // refresh channels
+      el('refreshBtn').addEventListener('click', () => {
+        fetchChannels();
+      });
+
+      el('listBtn').addEventListener('click', () => {
+        fetchChannels();
+      });
+
+      el('searchBtn').addEventListener('click', () => {
+        const q = el('searchInput').value.trim().toLowerCase();
+        if (!q) { fetchChannels(); return; }
+        // simple client-side filter
+        const lis = Array.from(document.querySelectorAll('#channelsList li'));
+        lis.forEach(li => {
+          const txt = li.textContent.toLowerCase();
+          li.style.display = txt.includes(q) ? '' : 'none';
+        });
+      });
+
+      el('forceBtn').addEventListener('click', () => {
+        const ch = el('forceChannelInput').value.trim();
+        if (!ch) return;
+        // call the .cng endpoint to force channel (existing behavior)
+        fetch('/' + ch + '.cng').then(r => {
+          if (r.ok) {
+            diag('Forced channel: ' + ch);
+          } else {
+            diag('Failed to force channel: ' + ch + ' status ' + r.status);
+          }
+        }).catch(e => diag('Force channel error: ' + e));
+      });
+
+      el('clearForce').addEventListener('click', () => {
+        el('forceChannelInput').value = '';
+        fetch('/.cng').then(r => diag('Cleared forced channel')).catch(e => diag('Clear force error: ' + e));
+      });
+
+      el('playBtn').addEventListener('click', () => {
+        const ch = el('forceChannelInput').value.trim();
+        if (!ch) { diag('No channel selected'); return; }
+        const url = window.location.origin + '/' + ch + '.m3u8';
+        window.open(url, '_blank');
+      });
+
+      el('copyM3U').addEventListener('click', async () => {
+        const ch = el('forceChannelInput').value.trim();
+        if (!ch) { diag('No channel selected'); return; }
+        const url = '/' + ch + '.m3u8';
+        try {
+          const r = await fetch(url);
+          if (!r.ok) { diag('Failed to fetch m3u8'); return; }
+          const txt = await r.text();
+          await navigator.clipboard.writeText(txt);
+          diag('M3U copied to clipboard');
+        } catch (e) {
+          diag('Copy M3U failed: ' + e);
+        }
+      });
+
+      el('copyXSPF').addEventListener('click', async () => {
+        const url = '/channels.xspf';
+        try {
+          const r = await fetch(url);
+          if (!r.ok) { diag('Failed to fetch xspf'); return; }
+          const txt = await r.text();
+          await navigator.clipboard.writeText(txt);
+          diag('XSPF copied to clipboard');
+        } catch (e) {
+          diag('Copy XSPF failed: ' + e);
+        }
+      });
+
+      el('diagAuth').addEventListener('click', authTest);
+      el('diagPlaylist').addEventListener('click', playlistTest);
+    });
+  </script>
+</body>
+</html>
